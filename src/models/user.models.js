@@ -24,12 +24,6 @@ const userSchema = new Schema({
         trim : true,
         index : true
     },
-    fullname : {
-        type : String, // cloudanary URL
-        required : true,
-        trim : true,
-        index : true
-    },
     coverImage : {
         type : String, // cloudinary URL 
     },
@@ -43,7 +37,7 @@ const userSchema = new Schema({
         type : String,
         required : [true, 'Password is required']
     },
-    refreshTocken : {
+    refreshToken : {
         type : String
     }
 },{timestamps})
@@ -52,7 +46,7 @@ userSchema.pre("save", async function (next) {
     if(!this.isModified("password")){
         return next()
     }
-    this.password = bcrypt.hash(this.password, 10)
+    this.password = await bcrypt.hash(this.password, 10)
     next()
 })
 
