@@ -2,9 +2,9 @@ import express from "express"
 import cors from "cors"
 import cookiParser from "cookie-parser"
 
-const app = express
+const app = express()
 
-app.request(cors({
+app.use(cors({
     origin: process.env.CORS_ORIGIN,
     credentials: true
 }))
@@ -21,7 +21,7 @@ import userRouter from './routes/user.routes.js'
 //routes declarartion
 app.use("/api/v1/users", userRouter)
 
-//----------> https://localhost:8000/api/v1/users/register
-//----------> https://localhost:8000/api/v1/users/login
+//----------> http://localhost:8000/api/v1/users/register
+//----------> http://localhost:8000/api/v1/users/login
 
 export { app }
