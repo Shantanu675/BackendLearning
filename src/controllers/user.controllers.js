@@ -6,6 +6,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
 import { lookup } from "dns";
 import { subscribe } from "diagnostics_channel";
+import mongoose from "mongoose";
 
 const generateAccessAndRefreshTokens = async(userId) => {
     try {
@@ -156,8 +157,8 @@ const logoutUser = asyncHandler(async(req, res) =>{
     await User.findByIdAndUpdate(
         req.user._id,
         {
-            $set: {
-                refreshToken : undefined
+            $unset: {
+                refreshToken : 1
             }
         },
         {
@@ -177,7 +178,63 @@ const logoutUser = asyncHandler(async(req, res) =>{
     .json(new ApiResponse(200, {}, "User Logged Out Successfully"))
 })
 
-const refreshAccessToken = asyncHandler(async(req, res) =>{
+
+//Taking from ChatGPT
+const refreshAccessToken = asyncHandler(async (req, res) => {
+    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+
+    if (!incomingRefreshToken) {
+        throw new ApiError(401, "Unauthorized Request");
+    }
+
+    try {
+        const decodedToken = jwt.verify(
+            incomingRefreshToken,
+            process.env.REFRESH_TOKEN_SECRET
+        );
+
+        const user = await User.findById(decodedToken?._id);
+
+        if (!user) {
+            throw new ApiError(401, "Invalid Refresh Token");
+        }
+
+        if (incomingRefreshToken !== user?.refreshToken) {
+            throw new ApiError(401, "Refresh token is expired or used");
+        }
+
+        const options = {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production", // secure cookie in production
+            path: "/",
+        };
+
+        const { accessToken, newRefreshToken } = await generateAccessAndRefreshTokens(user._id);
+
+        return res
+            .status(200)
+            .cookie("accessToken", accessToken, options)
+            .cookie("refreshToken", newRefreshToken, options)
+            .json(
+                new ApiResponse(
+                    200,
+                    { accessToken, newRefreshToken },
+                    "Access token refreshed"
+                )
+            );
+    } catch (error) {
+        if (error.name === "JsonWebTokenError") {
+            throw new ApiError(401, "Invalid Refresh Token");
+        }
+        if (error.name === "TokenExpiredError") {
+            throw new ApiError(401, "Refresh Token Expired");
+        }
+        throw new ApiError(401, error?.message || "Invalid refresh token");
+    }
+});
+
+//Given by sir and given 
+/* const refreshAccessToken = asyncHandler(async(req, res) =>{
     const incomingRefreshToken = req.cookie.refreshToken || req.body.refreshToken
 
     if(!incomingRefreshToken){
@@ -221,7 +278,7 @@ const refreshAccessToken = asyncHandler(async(req, res) =>{
     } catch (error) {
         throw new ApiError(401, error?.message || "Invalid refresh token")
     }
-}) 
+}) */
 
 const changeCurrentPassword = asyncHandler(async(req, res) =>{
     const {oldPassword, newPassword} = req.body
@@ -375,7 +432,7 @@ const getUserChannelProfile = asyncHandler(async(req,res) =>{
                 },
                 isSubscribed: {
                     $cond: {
-                        if:{$in: [req.user?._id, "subscribers.subscriber"]},
+                        if:{$in: [req.user?._id, "$subscribers.subscriber"]},
                         then: true,
                         else: false
                     }
@@ -390,7 +447,7 @@ const getUserChannelProfile = asyncHandler(async(req,res) =>{
                 avatar: 1,
                 coverImage: 1,
                 email: 1,
-                channelsSubscribedToCount
+                channelsSubscribedToCount: 1
             }
         }
     ])
@@ -410,7 +467,7 @@ const getWatchHistory = asyncHandler(async(req,res) => {
     const user = await User.aggregate([
         {
             $match: {
-                _id: new mongoose.Types.ObjectId(re.user._id)
+                _id: new mongoose.Types.ObjectId(req.user._id)
             }
         },
         {
